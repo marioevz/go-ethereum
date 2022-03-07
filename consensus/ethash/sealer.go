@@ -163,7 +163,7 @@ search:
 				attempts = 0
 			}
 			// Compute the PoW value of this nonce
-			digest, result := HashimotoFull(dataset.dataset, hash, nonce)
+			digest, result := HashimotoFull(dataset.Dataset, hash, nonce)
 			if powBuffer.SetBytes(result).Cmp(target) <= 0 {
 				// Correct nonce found, create a new header with it
 				header = types.CopyHeader(header)

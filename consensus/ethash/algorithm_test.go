@@ -806,7 +806,7 @@ func benchmarkHashimotoFullMmap(b *testing.B, name string, lock bool) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			binary.PutVarint(hash[:], int64(i))
-			HashimotoFull(d.dataset, hash[:], 0)
+			HashimotoFull(d.Dataset, hash[:], 0)
 		}
 	})
 }

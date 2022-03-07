@@ -542,7 +542,7 @@ func (ethash *Ethash) verifySeal(chain consensus.ChainHeaderReader, header *type
 	if fulldag {
 		dataset := ethash.Dataset(number, true)
 		if dataset.generated() {
-			digest, result = HashimotoFull(dataset.dataset, ethash.SealHash(header).Bytes(), header.Nonce.Uint64())
+			digest, result = HashimotoFull(dataset.Dataset, ethash.SealHash(header).Bytes(), header.Nonce.Uint64())
 
 			// Datasets are unmapped in a finalizer. Ensure that the dataset stays alive
 			// until after the call to HashimotoFull so it's not unmapped while being used.

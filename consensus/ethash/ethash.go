@@ -298,7 +298,7 @@ type dataset struct {
 	epoch   uint64    // Epoch for which this cache is relevant
 	dump    *os.File  // File descriptor of the memory mapped cache
 	mmap    mmap.MMap // Memory map itself to unmap before releasing
-	dataset []uint32  // The actual cache data content
+	Dataset []uint32  // The actual cache data content
 	once    sync.Once // Ensures the cache is generated only once
 	done    uint32    // Atomic flag to determine generation status
 }
@@ -327,8 +327,8 @@ func (d *dataset) generate(dir string, limit int, lock bool, test bool) {
 			cache := make([]uint32, csize/4)
 			generateCache(cache, d.epoch, seed)
 
-			d.dataset = make([]uint32, dsize/4)
-			generateDataset(d.dataset, d.epoch, cache)
+			d.Dataset = make([]uint32, dsize/4)
+			generateDataset(d.Dataset, d.epoch, cache)
 
 			return
 		}
@@ -346,7 +346,7 @@ func (d *dataset) generate(dir string, limit int, lock bool, test bool) {
 
 		// Try to load the file from disk and memory map it
 		var err error
-		d.dump, d.mmap, d.dataset, err = memoryMap(path, lock)
+		d.dump, d.mmap, d.Dataset, err = memoryMap(path, lock)
 		if err == nil {
 			logger.Debug("Loaded old ethash dataset from disk")
 			return
@@ -357,12 +357,12 @@ func (d *dataset) generate(dir string, limit int, lock bool, test bool) {
 		cache := make([]uint32, csize/4)
 		generateCache(cache, d.epoch, seed)
 
-		d.dump, d.mmap, d.dataset, err = memoryMapAndGenerate(path, dsize, lock, func(buffer []uint32) { generateDataset(buffer, d.epoch, cache) })
+		d.dump, d.mmap, d.Dataset, err = memoryMapAndGenerate(path, dsize, lock, func(buffer []uint32) { generateDataset(buffer, d.epoch, cache) })
 		if err != nil {
 			logger.Error("Failed to generate mapped ethash dataset", "err", err)
 
-			d.dataset = make([]uint32, dsize/4)
-			generateDataset(d.dataset, d.epoch, cache)
+			d.Dataset = make([]uint32, dsize/4)
+			generateDataset(d.Dataset, d.epoch, cache)
 		}
 		// Iterate over all previous instances and delete old ones
 		for ep := int(d.epoch) - limit; ep >= 0; ep-- {
