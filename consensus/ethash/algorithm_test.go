@@ -686,7 +686,7 @@ func TestHashimoto(t *testing.T) {
 	if !bytes.Equal(result, wantResult) {
 		t.Errorf("light hashimoto result mismatch: have %x, want %x", result, wantResult)
 	}
-	digest, result = hashimotoFull(dataset, hash, nonce)
+	digest, result = HashimotoFull(dataset, hash, nonce)
 	if !bytes.Equal(digest, wantDigest) {
 		t.Errorf("full hashimoto digest mismatch: have %x, want %x", digest, wantDigest)
 	}
@@ -788,7 +788,7 @@ func BenchmarkHashimotoFullSmall(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hashimotoFull(dataset, hash, 0)
+		HashimotoFull(dataset, hash, 0)
 	}
 }
 
@@ -806,7 +806,7 @@ func benchmarkHashimotoFullMmap(b *testing.B, name string, lock bool) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			binary.PutVarint(hash[:], int64(i))
-			hashimotoFull(d.dataset, hash[:], 0)
+			HashimotoFull(d.dataset, hash[:], 0)
 		}
 	})
 }
