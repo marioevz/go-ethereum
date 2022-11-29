@@ -1543,7 +1543,11 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 	)
 	blocks := make([]*types.Block, len(results))
 	for i, result := range results {
-		blocks[i] = types.NewBlockWithHeader(result.Header).WithBody(result.Transactions, result.Uncles)
+		if result.Withdrawals != nil {
+			blocks[i] = types.NewBlockWithHeader(result.Header).WithBody2(result.Transactions, result.Uncles, result.Withdrawals)
+		} else {
+			blocks[i] = types.NewBlockWithHeader(result.Header).WithBody(result.Transactions, result.Uncles)
+		}
 	}
 	// Downloaded blocks are always regarded as trusted after the
 	// transition. Because the downloaded chain is guided by the
