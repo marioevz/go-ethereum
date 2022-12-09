@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -99,33 +100,36 @@ type btHeaderMarshaling struct {
 }
 
 func (t *BlockTest) Run(snapshotter bool) error {
-	config, ok := Forks[t.json.Network]
-	if !ok {
-		return UnsupportedForkError{t.json.Network}
+	config, eips, err := GetChainConfig(t.json.Network)
+	if err != nil {
+		return err
 	}
 
 	// import pre accounts & construct test genesis block & state root
 	db := rawdb.NewMemoryDatabase()
 	gspec := t.genesis(config)
 	gblock := gspec.MustCommit(db)
-	if gblock.Hash() != t.json.Genesis.Hash {
-		return fmt.Errorf("genesis block hash doesn't match test: computed=%x, test=%x", gblock.Hash().Bytes()[:6], t.json.Genesis.Hash[:6])
-	}
 	if gblock.Root() != t.json.Genesis.StateRoot {
 		return fmt.Errorf("genesis block state root does not match test: computed=%x, test=%x", gblock.Root().Bytes()[:6], t.json.Genesis.StateRoot[:6])
 	}
+	if gblock.Hash() != t.json.Genesis.Hash {
+		return fmt.Errorf("genesis block hash doesn't match test: computed=%x, test=%x", gblock.Hash().Bytes()[:6], t.json.Genesis.Hash[:6])
+	}
 	var engine consensus.Engine
 	if t.json.SealEngine == "NoProof" {
-		engine = ethash.NewFaker()
+		engine = beacon.New(ethash.NewFaker())
 	} else {
-		engine = ethash.NewShared()
+		engine = beacon.New(ethash.NewShared())
 	}
 	cache := &core.CacheConfig{TrieCleanLimit: 0}
 	if snapshotter {
 		cache.SnapshotLimit = 1
 		cache.SnapshotWait = true
 	}
-	chain, err := core.NewBlockChain(db, cache, gspec, nil, engine, vm.Config{}, nil, nil)
+	vmConfig := vm.Config{
+		ExtraEips: eips,
+	}
+	chain, err := core.NewBlockChain(db, cache, gspec, nil, engine, vmConfig, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -204,6 +208,10 @@ func (t *BlockTest) insertBlocks(blockchain *core.BlockChain) ([]btBlock, error)
 			if b.BlockHeader == nil {
 				continue // OK - block is supposed to be invalid, continue with next block
 			} else {
+				b, _ := json.MarshalIndent(blockchain.Config(), "", " ")
+				fmt.Printf("blockchain.Config(): %s\n", b)
+				b, _ = json.MarshalIndent(blockchain.Genesis().Header(), "", " ")
+				fmt.Printf("blockchain.Genesis().Header(): %s\n", b)
 				return nil, fmt.Errorf("block #%v insertion into chain failed: %v", blocks[i].Number(), err)
 			}
 		}
