@@ -258,7 +258,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	}
 	// Apply withdrawals
 	for _, w := range pre.Env.Withdrawals {
-		statedb.AddBalance(w.Address, w.Amount)
+		statedb.AddBalance(w.Address, new(big.Int).Mul(new(big.Int).SetUint64(w.Amount), big.NewInt(params.GWei)))
 	}
 	// Commit block
 	root, err := statedb.Commit(chainConfig.IsEIP158(vmContext.BlockNumber))
