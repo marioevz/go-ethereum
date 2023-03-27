@@ -75,6 +75,7 @@ func (p *StateProcessor) Process(block *types.Block, excessDataGas *big.Int, sta
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 	// Iterate over and process the individual transactions
 	signer := types.MakeSigner(p.config, header.Number, header.Time)
+	newBlobs := 0
 	for i, tx := range block.Transactions() {
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
@@ -87,11 +88,17 @@ func (p *StateProcessor) Process(block *types.Block, excessDataGas *big.Int, sta
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+		if tx.Type() == types.BlobTxType {
+			newBlobs += len(tx.DataHashes())
+		}
 	}
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
 	withdrawals := block.Withdrawals()
 	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Time()) {
 		return nil, nil, 0, fmt.Errorf("withdrawals before shanghai")
+	}
+	if p.config.IsSharding(block.Time()) && header.ExcessDataGas.Cmp(misc.CalcExcessDataGas(excessDataGas, newBlobs)) != 0 {
+		return nil, nil, 0, fmt.Errorf("invalid excess data gas in header")
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), withdrawals)
