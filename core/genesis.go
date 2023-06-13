@@ -468,6 +468,12 @@ func (g *Genesis) ToBlock() *types.Block {
 		withdrawals = make([]*types.Withdrawal, 0)
 	}
 	if g.Config != nil && g.Config.IsCancun(big.NewInt(int64(g.Number)), g.Timestamp) {
+		if g.DataGasUsed == nil {
+			var dataGasUsed uint64
+			head.DataGasUsed = &dataGasUsed
+		} else {
+			head.DataGasUsed = g.DataGasUsed
+		}
 		if g.ExcessDataGas == nil {
 			var excessDataGas uint64
 			head.ExcessDataGas = &excessDataGas
