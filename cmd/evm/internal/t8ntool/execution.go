@@ -167,13 +167,17 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		if pre.Env.ExcessDataGas != nil {
 			vmContext.ExcessDataGas = pre.Env.ExcessDataGas
 		} else {
-			if pre.Env.ParentDataGasUsed == nil {
-				return nil, nil, fmt.Errorf("parentDataGasUsed is required but missing from the environment")
+			var (
+				parentDataGasUsed   = uint64(0)
+				parentExcessDataGas = uint64(0)
+			)
+			if pre.Env.ParentDataGasUsed != nil {
+				parentDataGasUsed = *pre.Env.ParentDataGasUsed
 			}
-			if pre.Env.ParentExcessDataGas == nil {
-				return nil, nil, fmt.Errorf("parentExcessDataGas is required but missing from the environment")
+			if pre.Env.ParentExcessDataGas != nil {
+				parentExcessDataGas = *pre.Env.ParentExcessDataGas
 			}
-			edg := misc.CalcExcessDataGas(*pre.Env.ParentExcessDataGas, *pre.Env.ParentDataGasUsed)
+			edg := misc.CalcExcessDataGas(parentExcessDataGas, parentDataGasUsed)
 			vmContext.ExcessDataGas = &edg
 		}
 	}
