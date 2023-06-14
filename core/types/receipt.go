@@ -345,6 +345,9 @@ func (rs Receipts) DeriveFields(config *params.ChainConfig, hash common.Hash, nu
 			rs[i].ContractAddress = common.Address{}
 		}
 
+		dataGasUsed := uint64(len(txs[i].BlobHashes()) * params.BlobTxDataGasPerBlob)
+		rs[i].DataGasUsed = &dataGasUsed
+
 		// The used gas can be calculated based on previous r
 		if i == 0 {
 			rs[i].GasUsed = rs[i].CumulativeGasUsed
