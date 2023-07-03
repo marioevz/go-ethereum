@@ -211,8 +211,8 @@ func Transition(ctx *cli.Context) error {
 			}
 			for _, tx := range txs {
 				txsWithKeys = append(txsWithKeys, &txWithKey{
-					key: nil,
-					tx:  tx,
+					Key: nil,
+					Tx:  tx,
 				})
 			}
 		} else {
@@ -230,8 +230,8 @@ func Transition(ctx *cli.Context) error {
 			}
 			for _, tx := range txs {
 				txsWithKeys = append(txsWithKeys, &txWithKey{
-					key: nil,
-					tx:  tx,
+					Key: nil,
+					Tx:  tx,
 				})
 			}
 		} else {
@@ -307,9 +307,9 @@ func Transition(ctx *cli.Context) error {
 // txWithKey is a helper-struct, to allow us to use the types.Transaction along with
 // a `secretKey`-field, for input
 type txWithKey struct {
-	key       *ecdsa.PrivateKey
-	tx        *types.Transaction
-	protected bool
+	Key       *ecdsa.PrivateKey  `json:"secretKey,omitempty"`
+	Tx        *types.Transaction `json:"tx"`
+	Protected bool               `json:"protected"`
 }
 
 func (t *txWithKey) UnmarshalJSON(input []byte) error {
@@ -327,20 +327,20 @@ func (t *txWithKey) UnmarshalJSON(input []byte) error {
 		if ecdsaKey, err := crypto.HexToECDSA(k); err != nil {
 			return err
 		} else {
-			t.key = ecdsaKey
+			t.Key = ecdsaKey
 		}
 	}
 	if data.Protected != nil {
-		t.protected = *data.Protected
+		t.Protected = *data.Protected
 	} else {
-		t.protected = true
+		t.Protected = true
 	}
 	// Now, read the transaction itself
 	var tx types.Transaction
 	if err := json.Unmarshal(input, &tx); err != nil {
 		return err
 	}
-	t.tx = &tx
+	t.Tx = &tx
 	return nil
 }
 
@@ -359,8 +359,8 @@ func (t *txWithKey) UnmarshalJSON(input []byte) error {
 func signUnsignedTransactions(txs []*txWithKey, signer types.Signer) (types.Transactions, error) {
 	var signedTxs []*types.Transaction
 	for i, txWithKey := range txs {
-		tx := txWithKey.tx
-		key := txWithKey.key
+		tx := txWithKey.Tx
+		key := txWithKey.Key
 		v, r, s := tx.RawSignatureValues()
 		if key != nil && v.BitLen()+r.BitLen()+s.BitLen() == 0 {
 			// This transaction needs to be signed
@@ -368,7 +368,8 @@ func signUnsignedTransactions(txs []*txWithKey, signer types.Signer) (types.Tran
 				signed *types.Transaction
 				err    error
 			)
-			if txWithKey.protected {
+			if txWithKey.Protected {
+				fmt.Fprintf(os.Stderr, "Signing a protected transaction\n")
 				signed, err = types.SignTx(tx, signer, key)
 			} else {
 				signed, err = types.SignTx(tx, types.FrontierSigner{}, key)

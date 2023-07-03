@@ -64,6 +64,80 @@ func (r *result) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
+func TransactionSign(ctx *cli.Context) error {
+	// Configure the go-ethereum logger
+	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(false)))
+	glogger.Verbosity(log.Lvl(ctx.Int(VerbosityFlag.Name)))
+	log.Root().SetHandler(glogger)
+
+	// We need to load the transactions. May be either in stdin input or in files.
+	// Check if anything needs to be read from stdin
+	var (
+		txStr    = ctx.String(InputTxsFlag.Name)
+		inputTxs = make([]*txWithKey, 0)
+		chainID  = big.NewInt(ctx.Int64(ChainIDFlag.Name))
+	)
+
+	if txStr == stdinSelector {
+		decoder := json.NewDecoder(os.Stdin)
+		if err := decoder.Decode(&inputTxs); err != nil {
+			return NewError(ErrorJson, fmt.Errorf("failed unmarshaling stdin: %v", err))
+		}
+	} else {
+		// Read input from file
+		inFile, err := os.Open(txStr)
+		if err != nil {
+			return NewError(ErrorIO, fmt.Errorf("failed reading txs file: %v", err))
+		}
+		defer inFile.Close()
+		decoder := json.NewDecoder(inFile)
+		if err := decoder.Decode(&inputTxs); err != nil {
+			return err
+		}
+	}
+	cancunTime := uint64(0)
+	signer := types.LatestSigner(&params.ChainConfig{ChainID: chainID, CancunTime: &cancunTime})
+
+	loadedJson, err := json.MarshalIndent(inputTxs, "", "  ")
+	fmt.Fprintf(os.Stderr, "Loaded %d transactions\n%s\n", len(inputTxs), loadedJson)
+	signedTxs, err := signUnsignedTransactions(inputTxs, signer)
+	if err != nil {
+		return err
+	}
+
+	type resultTx struct {
+		V      *hexutil.Big   `json:"v" gencodec:"required"`
+		R      *hexutil.Big   `json:"r" gencodec:"required"`
+		S      *hexutil.Big   `json:"s" gencodec:"required"`
+		Sender common.Address `json:"sender" gencodec:"required"`
+		RLP    *hexutil.Bytes `json:"rlp" gencodec:"required"`
+	}
+
+	results := make([]*resultTx, len(signedTxs))
+	for i, tx := range signedTxs {
+		v, r, s := tx.RawSignatureValues()
+		serializedBytes, err := tx.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		results[i] = &resultTx{
+			V:   (*hexutil.Big)(v),
+			R:   (*hexutil.Big)(r),
+			S:   (*hexutil.Big)(s),
+			RLP: (*hexutil.Bytes)(&serializedBytes),
+		}
+		if sender, err := types.Sender(signer, tx); err != nil {
+			return err
+		} else {
+			results[i].Sender = sender
+		}
+	}
+
+	out, err := json.MarshalIndent(results, "", "  ")
+	fmt.Println(string(out))
+	return err
+}
+
 func Transaction(ctx *cli.Context) error {
 	// Configure the go-ethereum logger
 	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(false)))

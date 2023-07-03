@@ -166,6 +166,17 @@ var transactionCommand = &cli.Command{
 	},
 }
 
+var transactionSignCommand = &cli.Command{
+	Name:    "transaction-sign",
+	Aliases: []string{"tsign"},
+	Usage:   "performs transaction signing",
+	Action:  t8ntool.TransactionSign,
+	Flags: []cli.Flag{
+		t8ntool.InputTxsFlag,
+		t8ntool.ChainIDFlag,
+	},
+}
+
 var blockBuilderCommand = &cli.Command{
 	Name:    "block-builder",
 	Aliases: []string{"b11r"},
@@ -219,6 +230,7 @@ func init() {
 		stateTestCommand,
 		stateTransitionCommand,
 		transactionCommand,
+		transactionSignCommand,
 		blockBuilderCommand,
 	}
 }
