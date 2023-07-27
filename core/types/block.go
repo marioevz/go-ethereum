@@ -86,10 +86,10 @@ type Header struct {
 	WithdrawalsHash *common.Hash `json:"withdrawalsRoot" rlp:"optional"`
 
 	// ExcessDataGas was added by EIP-4844 and is ignored in legacy headers.
-	ExcessDataGas *uint64 `json:"excessDataGas" rlp:"optional"`
+	ExcessDataGas *uint64 `json:"excessBlobGas" rlp:"optional"`
 
 	// DataGasUsed was added by EIP-4844 and is ignored in legacy headers.
-	DataGasUsed *uint64 `json:"dataGasUsed" rlp:"optional"`
+	DataGasUsed *uint64 `json:"blobGasUsed" rlp:"optional"`
 }
 
 // field type overrides for gencodec
