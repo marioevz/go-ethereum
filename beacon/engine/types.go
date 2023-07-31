@@ -36,6 +36,7 @@ type PayloadAttributes struct {
 	Random                common.Hash         `json:"prevRandao"            gencodec:"required"`
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
+	BeaconRoot            *common.Hash        `json:"parentBeaconBlockRoot"`
 }
 
 // JSON type overrides for PayloadAttributes.
@@ -64,6 +65,7 @@ type ExecutableData struct {
 	Withdrawals   []*types.Withdrawal `json:"withdrawals"`
 	BlobGasUsed   *uint64             `json:"blobGasUsed"`
 	ExcessBlobGas *uint64             `json:"excessBlobGas"`
+	BeaconRoot    *common.Hash        `json:"parentBeaconBlockRoot"`
 }
 
 // JSON type overrides for executableData.
@@ -226,6 +228,7 @@ func ExecutableDataToBlock(params ExecutableData, versionedHashes []common.Hash)
 		WithdrawalsHash: withdrawalsRoot,
 		ExcessBlobGas:   params.ExcessBlobGas,
 		BlobGasUsed:     params.BlobGasUsed,
+		BeaconRoot:      params.BeaconRoot,
 	}
 	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */).WithWithdrawals(params.Withdrawals)
 	if block.Hash() != params.BlockHash {
@@ -255,6 +258,7 @@ func BlockToExecutableData(block *types.Block, fees *big.Int, blobs []kzg4844.Bl
 		Withdrawals:   block.Withdrawals(),
 		BlobGasUsed:   block.BlobGasUsed(),
 		ExcessBlobGas: block.ExcessBlobGas(),
+		BeaconRoot:    block.BeaconRoot(),
 	}
 	blobsBundle := BlobsBundleV1{
 		Commitments: make([]hexutil.Bytes, 0),
