@@ -109,7 +109,6 @@ var PrecompiledContractsCancun = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}):    &blake2F{},
 	common.BytesToAddress([]byte{0x0A}): &kzgPointEvaluation{},
-	params.BeaconRootsStorageAddress:    &beaconRoot{},
 }
 
 // PrecompiledContractsBLS contains the set of pre-compiled Ethereum
@@ -1139,29 +1138,4 @@ func kZGToVersionedHash(kzg kzg4844.Commitment) common.Hash {
 	h[0] = blobCommitmentVersionKZG
 
 	return h
-}
-
-// BeaconRoot is a stateful precompile that returns a beacon root.
-type beaconRoot struct{}
-
-func (c *beaconRoot) RequiredGas(input []byte) uint64 {
-	return params.BeaconRootPrecompileGas
-}
-
-func (c *beaconRoot) Run(stateDB StateReader, input []byte) ([]byte, error) {
-	if len(input) != common.HashLength {
-		return nil, errors.New("invalid input length")
-	}
-	var timestamp common.Hash
-	copy(timestamp[:], input)
-	// retrieve stored timestamp
-	timeIndex := binary.BigEndian.Uint64(timestamp[24:]) % params.HistoricalRootsModulus
-	recordedTimestamp := stateDB.GetState(params.BeaconRootsStorageAddress, common.Uint64ToHash(timeIndex))
-	if recordedTimestamp != timestamp {
-		return make([]byte, 32), nil
-	}
-	// retrieve stored beacon root
-	rootIndex := timeIndex + params.HistoricalRootsModulus
-	beaconRoot := stateDB.GetState(params.BeaconRootsStorageAddress, common.Uint64ToHash(rootIndex))
-	return beaconRoot[:], nil
 }
