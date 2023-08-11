@@ -70,27 +70,27 @@ type btBlock struct {
 //go:generate go run github.com/fjl/gencodec -type btHeader -field-override btHeaderMarshaling -out gen_btheader.go
 
 type btHeader struct {
-	Bloom            types.Bloom
-	Coinbase         common.Address
-	MixHash          common.Hash
-	Nonce            types.BlockNonce
-	Number           *big.Int
-	Hash             common.Hash
-	ParentHash       common.Hash
-	ReceiptTrie      common.Hash
-	StateRoot        common.Hash
-	TransactionsTrie common.Hash
-	UncleHash        common.Hash
-	ExtraData        []byte
-	Difficulty       *big.Int
-	GasLimit         uint64
-	GasUsed          uint64
-	Timestamp        uint64
-	BaseFeePerGas    *big.Int
-	WithdrawalsRoot  *common.Hash
-	ExcessBlobGas    *uint64
-	BlobGasUsed      *uint64
-	BeaconRoot       *common.Hash
+	Bloom                 types.Bloom
+	Coinbase              common.Address
+	MixHash               common.Hash
+	Nonce                 types.BlockNonce
+	Number                *big.Int
+	Hash                  common.Hash
+	ParentHash            common.Hash
+	ReceiptTrie           common.Hash
+	StateRoot             common.Hash
+	TransactionsTrie      common.Hash
+	UncleHash             common.Hash
+	ExtraData             []byte
+	Difficulty            *big.Int
+	GasLimit              uint64
+	GasUsed               uint64
+	Timestamp             uint64
+	BaseFeePerGas         *big.Int
+	WithdrawalsRoot       *common.Hash
+	ExcessBlobGas         *uint64
+	BlobGasUsed           *uint64
+	ParentBeaconBlockRoot *common.Hash
 }
 
 type btHeaderMarshaling struct {
@@ -291,8 +291,8 @@ func validateHeader(h *btHeader, h2 *types.Header) error {
 	if !reflect.DeepEqual(h.ExcessBlobGas, h2.ExcessBlobGas) {
 		return fmt.Errorf("excessBlobGas: want: %v have: %v", h.ExcessBlobGas, h2.ExcessBlobGas)
 	}
-	if !reflect.DeepEqual(h.BeaconRoot, h2.BeaconRoot) {
-		return fmt.Errorf("beaconRoot: want: %v have: %v", h.BeaconRoot, h2.BeaconRoot)
+	if !reflect.DeepEqual(h.ParentBeaconBlockRoot, h2.BeaconRoot) {
+		return fmt.Errorf("beaconRoot: want: %v have: %v", h.ParentBeaconBlockRoot, h2.BeaconRoot)
 	}
 	return nil
 }
