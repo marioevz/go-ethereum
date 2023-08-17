@@ -89,7 +89,7 @@ type stEnv struct {
 	BaseFee             *big.Int                            `json:"currentBaseFee,omitempty"`
 	ParentUncleHash     common.Hash                         `json:"parentUncleHash"`
 	ExcessBlobGas       *uint64                             `json:"currentExcessBlobGas,omitempty"`
-	BeaconRoot          *common.Hash                        `json:"beaconRoot,omitempty"`
+	BeaconRoot          *common.Hash                        `json:"parentBeaconBlockRoot,omitempty"`
 }
 
 type stEnvMarshaling struct {
