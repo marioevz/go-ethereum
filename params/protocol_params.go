@@ -187,7 +187,7 @@ var (
 
 	// BeaconRootsStorageAddress is the address where historical beacon roots are stored as per EIP-4788
 	// BeaconRootsStorageAddress = common.HexToAddress("0xbEac00dDB15f3B6d645C48263dC93862413A222D")
-	BeaconRootsStorageAddress = common.HexToAddress("0x000000000000000000000000000000000000000b")
+	BeaconRootsStorageAddress = common.HexToAddress("0xbeac00ddb15f3b6d645c48263dc93862413a222d")
 
 	// SystemAddress is where the system-transaction is sent from as per EIP-4788
 	SystemAddress common.Address = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
