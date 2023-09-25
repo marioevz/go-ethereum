@@ -1,7 +1,7 @@
 ## EIP 4788
 
 This test contains testcases for EIP-4788. The 4788-contract is 
-located at address `0xbEAC020008aFF7331c0A389CB2AAb67597567d7a`, and this test executes a simple transaction. It also
+located at address `0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`, and this test executes a simple transaction. It also
 implicitly invokes the system tx, which sets calls the contract and sets the 
 storage values
 ```
