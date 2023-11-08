@@ -214,7 +214,6 @@ func initGenesis(ctx *cli.Context) error {
 		}
 		triedb := trie.NewDatabaseWithConfig(chaindb, &trie.Config{
 			Preimages: ctx.Bool(utils.CachePreimagesFlag.Name),
-			Verkle:    true,
 		})
 		_, hash, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
 		if err != nil {
