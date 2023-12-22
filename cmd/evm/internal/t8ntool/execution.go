@@ -140,6 +140,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		rejectedTxs []*rejectedTx
 		includedTxs types.Transactions
 		gasUsed     = uint64(0)
+		blobGasUsed = uint64(0)
 		receipts    = make(types.Receipts, 0)
 		txIndex     = 0
 	)
@@ -189,7 +190,6 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		evm := vm.NewEVM(vmContext, vm.TxContext{}, statedb, chainConfig, vmConfig)
 		core.ProcessBeaconBlockRoot(*beaconRoot, evm, statedb)
 	}
-	var blobGasUsed uint64
 
 	for i := 0; txIt.Next(); i++ {
 		tx, err := txIt.Tx()
@@ -210,16 +210,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 			rejectedTxs = append(rejectedTxs, &rejectedTx{i, err.Error()})
 			continue
 		}
-		if tx.Type() == types.BlobTxType {
-			txBlobGas := uint64(params.BlobTxBlobGasPerBlob * len(tx.BlobHashes()))
-			if used, max := blobGasUsed+txBlobGas, uint64(params.MaxBlobGasPerBlock); used > max {
-				err := fmt.Errorf("blob gas (%d) would exceed maximum allowance %d", used, max)
-				log.Warn("rejected tx", "index", i, "err", err)
-				rejectedTxs = append(rejectedTxs, &rejectedTx{i, err.Error()})
-				continue
-			}
-			blobGasUsed += txBlobGas
-		}
+
 		tracer, err := getTracerFn(txIndex, tx.Hash())
 		if err != nil {
 			return nil, nil, nil, err
@@ -246,6 +237,16 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		includedTxs = append(includedTxs, tx)
 		if hashError != nil {
 			return nil, nil, nil, NewError(ErrorMissingBlockhash, hashError)
+		}
+		if tx.Type() == types.BlobTxType {
+			txBlobGas := uint64(params.BlobTxBlobGasPerBlob * len(tx.BlobHashes()))
+			if used, max := blobGasUsed+txBlobGas, uint64(params.MaxBlobGasPerBlock); used > max {
+				err := fmt.Errorf("blob gas (%d) would exceed maximum allowance %d", used, max)
+				log.Warn("rejected tx", "index", i, "err", err)
+				rejectedTxs = append(rejectedTxs, &rejectedTx{i, err.Error()})
+				continue
+			}
+			blobGasUsed += txBlobGas
 		}
 		gasUsed += msgResult.UsedGas
 
