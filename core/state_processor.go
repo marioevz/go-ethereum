@@ -367,6 +367,10 @@ func (kvm *keyValueMigrator) migrateCollectedKeyValues(tree *trie.VerkleTrie) er
 func ProcessParentBlockHash(statedb *state.StateDB, prevNumber uint64, prevHash common.Hash) {
 	var key common.Hash
 	binary.BigEndian.PutUint64(key[24:], prevNumber)
+	if !statedb.Exist(params.HistoryStorageAddress) {
+		statedb.CreateAccount(params.HistoryStorageAddress)
+		statedb.SetNonce(params.HistoryStorageAddress, 1)
+	}
 	statedb.SetState(params.HistoryStorageAddress, key, prevHash)
 	index, suffix := utils.GetTreeKeyStorageSlotTreeIndexes(key[:])
 	statedb.Witness().TouchAddressOnWriteAndComputeGas(params.HistoryStorageAddress[:], *index, suffix)
