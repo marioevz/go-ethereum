@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/overlay"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -88,6 +89,13 @@ type stEnv struct {
 	ExcessBlobGas       *uint64                             `json:"excessBlobGas,omitempty"`
 	ParentExcessBlobGas *uint64                             `json:"parentExcessBlobGas,omitempty"`
 	ParentBlobGasUsed   *uint64                             `json:"parentBlobGasUsed,omitempty"`
+
+	// Values to test the verkle conversion
+	CurrentAccountAddress *common.Address `json:"currentConversionAddress" gencodec:"optional"`
+	CurrentSlotHash       *common.Hash    `json:"currentConversionSlotHash" gencodec:"optional"`
+	Started               *bool           `json:"currentConversionStarted" gencodec:"optional"`
+	Ended                 *bool           `json:"currentConversionEnded" gencodec:"optional"`
+	StorageProcessed      *bool           `json:"currentConversionStorageProcessed" gencodec:"optional"`
 }
 
 type stEnvMarshaling struct {
@@ -106,6 +114,13 @@ type stEnvMarshaling struct {
 	ExcessBlobGas       *math.HexOrDecimal64
 	ParentExcessBlobGas *math.HexOrDecimal64
 	ParentBlobGasUsed   *math.HexOrDecimal64
+
+	// Values to test the verkle conversion
+	CurrentAccountAddress *common.UnprefixedAddress
+	CurrentSlotHash       *common.UnprefixedHash
+	Started               *bool
+	Ended                 *bool
+	StorageProcessed      *bool
 }
 
 type rejectedTx struct {
@@ -295,6 +310,19 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		// Amount is in gwei, turn into wei
 		amount := new(big.Int).Mul(new(big.Int).SetUint64(w.Amount), big.NewInt(params.GWei))
 		statedb.AddBalance(w.Address, amount)
+	}
+
+	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
+		statedb.Database().StartVerkleTransition(common.Hash{}, common.Hash{}, chainConfig, chainConfig.PragueTime, common.Hash{})
+		if *pre.Env.Ended {
+			statedb.Database().EndVerkleTransition()
+		}
+		statedb.Database().SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
+		statedb.Database().SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
+		statedb.Database().SetStorageProcessed(*pre.Env.StorageProcessed)
+		if err := overlay.OverlayVerkleTransition(statedb, common.Hash{}, chainConfig.OverlayStride); err != nil {
+			log.Error("error performing the transition", "err", err)
+		}
 	}
 	// Commit block
 	root, err := statedb.Commit(vmContext.BlockNumber.Uint64(), chainConfig.IsEIP158(vmContext.BlockNumber))
