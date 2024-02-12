@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/overlay"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -41,8 +42,9 @@ import (
 )
 
 type Prestate struct {
-	Env stEnv             `json:"env"`
-	Pre core.GenesisAlloc `json:"pre"`
+	Env    stEnv             `json:"env"`
+	Pre    core.GenesisAlloc `json:"pre"`
+	MPTPre core.GenesisAlloc `json:"mptPre,omitempty"`
 }
 
 // ExecutionResult contains the execution status after running a state test, any
@@ -154,7 +156,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		return h
 	}
 	var (
-		statedb     = MakePreState(rawdb.NewMemoryDatabase(), pre, chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp))
+		statedb     = MakePreState(rawdb.NewMemoryDatabase(), chainConfig, pre, chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp))
 		signer      = types.MakeSigner(chainConfig, new(big.Int).SetUint64(pre.Env.Number), pre.Env.Timestamp)
 		gaspool     = new(core.GasPool)
 		blockHash   = common.Hash{0x13, 0x37}
@@ -363,18 +365,80 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	return statedb, execRs, nil
 }
 
-func MakePreState(db ethdb.Database, pre *Prestate, verkle bool) *state.StateDB {
+func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prestate, verkle bool) *state.StateDB {
 	sdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true, Verkle: verkle})
-	sdb.InitTransitionStatus(*pre.Env.Started, *pre.Env.Ended, pre.Env.CurrentAccountAddress, pre.Env.CurrentSlotHash, pre.Env.StorageProcessed)
-	if verkle {
-		sdb.StartVerkleTransition(common.Hash{}, common.Hash{}, nil, nil, common.Hash{})
-		if *pre.Env.Ended {
-			sdb.EndVerkleTransition()
+
+	// Did we pass the verkle fork?
+	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
+		// is this the verkle fork block?
+		if pre.Env.Number == 0 || chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)-1), pre.Env.ParentTimestamp) {
+			// generate the snapshot from the pre state and start with a fresh tree
+			mptSdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true, Verkle: false})
+			statedb, _ := state.New(types.EmptyRootHash, mptSdb, nil)
+			for addr, a := range pre.MPTPre {
+				statedb.SetCode(addr, a.Code)
+				statedb.SetNonce(addr, a.Nonce)
+				statedb.SetBalance(addr, a.Balance)
+				for k, v := range a.Storage {
+					statedb.SetState(addr, k, v)
+				}
+			}
+			// Commit db an create a snapshot from it.
+			mptRoot, _ := statedb.Commit(0, false)
+			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, Verkle: verkle}, mptSdb.DiskDB(), mptSdb.TrieDB(), mptRoot)
+			if err != nil {
+				panic(err)
+			}
+			snaps.Cap(mptRoot, 0)
+
+			// The parent root is the root of the MPT, and it is also the one of the base tree. This
+			// is why it's repeated three times here.
+			sdb.StartVerkleTransition(mptRoot, mptRoot, chainConfig, chainConfig.PragueTime, mptRoot)
+
+			// Create an empty verkle state
+			statedb, _ = state.New(types.EmptyRootHash, sdb, nil)
+
+			return statedb
+		} else {
+			// has the conversion ended?
+			if *pre.Env.Ended {
+				sdb.InitTransitionStatus(true, true)
+
+				// Fallthrough to the MPT/post-conversion case
+			} else {
+				sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
+				sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
+				sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
+
+				// ongoing conversion, generate the snapshot from the pre state but also
+				// the intermediate verkle tree.
+				statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
+				for addr, a := range pre.MPTPre {
+					statedb.SetCode(addr, a.Code)
+					statedb.SetNonce(addr, a.Nonce)
+					statedb.SetBalance(addr, a.Balance)
+					for k, v := range a.Storage {
+						statedb.SetState(addr, k, v)
+					}
+				}
+				// Commit and re-open to start with a clean state.
+				mptRoot, _ := statedb.Commit(0, false)
+				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, Verkle: verkle}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
+				if err != nil {
+					panic(err)
+				}
+				snaps.Cap(mptRoot, 0)
+
+				// Fallthrough to the MPT/post-conversion case
+				// Note to self: the next state.New should not need snaps as a
+				// parameter, as long as it's available in the diskdb.
+			}
 		}
-		sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
-		sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
-		sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
 	}
+
+	// Create the state and the statedb from the allocation. This can be an MPT or
+	// a verkle tree. If the conversion is ongoing, the MPT data has been stored
+	// into another tree that has already been created at this point.
 	statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
 	for addr, a := range pre.Pre {
 		statedb.SetCode(addr, a.Code)
@@ -386,7 +450,10 @@ func MakePreState(db ethdb.Database, pre *Prestate, verkle bool) *state.StateDB 
 	}
 	// Commit and re-open to start with a clean state.
 	root, _ := statedb.Commit(0, false)
-	statedb, _ = state.New(root, sdb, nil)
+	statedb, err := state.New(root, sdb, nil)
+	if err != nil {
+		panic(err)
+	}
 	return statedb
 }
 
