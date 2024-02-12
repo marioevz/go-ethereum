@@ -61,6 +61,13 @@ type ExecutionResult struct {
 	WithdrawalsRoot      *common.Hash          `json:"withdrawalsRoot,omitempty"`
 	CurrentExcessBlobGas *math.HexOrDecimal64  `json:"currentExcessBlobGas,omitempty"`
 	CurrentBlobGasUsed   *math.HexOrDecimal64  `json:"currentBlobGasUsed,omitempty"`
+
+	// Values to test the verkle conversion
+	CurrentAccountAddress *common.Address `json:"currentConversionAddress" gencodec:"optional"`
+	CurrentSlotHash       common.Hash     `json:"currentConversionSlotHash" gencodec:"optional"`
+	Started               bool            `json:"currentConversionStarted" gencodec:"optional"`
+	Ended                 bool            `json:"currentConversionEnded" gencodec:"optional"`
+	StorageProcessed      bool            `json:"currentConversionStorageProcessed" gencodec:"optional"`
 }
 
 type ommer struct {
@@ -147,7 +154,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		return h
 	}
 	var (
-		statedb     = MakePreState(rawdb.NewMemoryDatabase(), pre.Pre)
+		statedb     = MakePreState(rawdb.NewMemoryDatabase(), pre, chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp))
 		signer      = types.MakeSigner(chainConfig, new(big.Int).SetUint64(pre.Env.Number), pre.Env.Timestamp)
 		gaspool     = new(core.GasPool)
 		blockHash   = common.Hash{0x13, 0x37}
@@ -313,13 +320,6 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	}
 
 	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
-		statedb.Database().StartVerkleTransition(common.Hash{}, common.Hash{}, chainConfig, chainConfig.PragueTime, common.Hash{})
-		if *pre.Env.Ended {
-			statedb.Database().EndVerkleTransition()
-		}
-		statedb.Database().SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
-		statedb.Database().SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
-		statedb.Database().SetStorageProcessed(*pre.Env.StorageProcessed)
 		if err := overlay.OverlayVerkleTransition(statedb, common.Hash{}, chainConfig.OverlayStride); err != nil {
 			log.Error("error performing the transition", "err", err)
 		}
@@ -329,17 +329,22 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	if err != nil {
 		return nil, nil, NewError(ErrorEVM, fmt.Errorf("could not commit state: %v", err))
 	}
+	sdb := statedb.Database()
 	execRs := &ExecutionResult{
-		StateRoot:   root,
-		TxRoot:      types.DeriveSha(includedTxs, trie.NewStackTrie(nil)),
-		ReceiptRoot: types.DeriveSha(receipts, trie.NewStackTrie(nil)),
-		Bloom:       types.CreateBloom(receipts),
-		LogsHash:    rlpHash(statedb.Logs()),
-		Receipts:    receipts,
-		Rejected:    rejectedTxs,
-		Difficulty:  (*math.HexOrDecimal256)(vmContext.Difficulty),
-		GasUsed:     (math.HexOrDecimal64)(gasUsed),
-		BaseFee:     (*math.HexOrDecimal256)(vmContext.BaseFee),
+		StateRoot:             root,
+		TxRoot:                types.DeriveSha(includedTxs, trie.NewStackTrie(nil)),
+		ReceiptRoot:           types.DeriveSha(receipts, trie.NewStackTrie(nil)),
+		Bloom:                 types.CreateBloom(receipts),
+		LogsHash:              rlpHash(statedb.Logs()),
+		Receipts:              receipts,
+		Rejected:              rejectedTxs,
+		Difficulty:            (*math.HexOrDecimal256)(vmContext.Difficulty),
+		GasUsed:               (math.HexOrDecimal64)(gasUsed),
+		BaseFee:               (*math.HexOrDecimal256)(vmContext.BaseFee),
+		CurrentAccountAddress: sdb.GetCurrentAccountAddress(),
+		CurrentSlotHash:       sdb.GetCurrentSlotHash(),
+		Started:               sdb.InTransition() && sdb.Transitioned(),
+		Ended:                 sdb.Transitioned(),
 	}
 	if pre.Env.Withdrawals != nil {
 		h := types.DeriveSha(types.Withdrawals(pre.Env.Withdrawals), trie.NewStackTrie(nil))
@@ -358,10 +363,20 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	return statedb, execRs, nil
 }
 
-func MakePreState(db ethdb.Database, accounts core.GenesisAlloc) *state.StateDB {
-	sdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true})
+func MakePreState(db ethdb.Database, pre *Prestate, verkle bool) *state.StateDB {
+	sdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true, Verkle: verkle})
+	sdb.InitTransitionStatus(*pre.Env.Started, *pre.Env.Ended, pre.Env.CurrentAccountAddress, pre.Env.CurrentSlotHash, pre.Env.StorageProcessed)
+	if verkle {
+		sdb.StartVerkleTransition(common.Hash{}, common.Hash{}, nil, nil, common.Hash{})
+		if *pre.Env.Ended {
+			sdb.EndVerkleTransition()
+		}
+		sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
+		sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
+		sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
+	}
 	statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
-	for addr, a := range accounts {
+	for addr, a := range pre.Pre {
 		statedb.SetCode(addr, a.Code)
 		statedb.SetNonce(addr, a.Nonce)
 		statedb.SetBalance(addr, a.Balance)
