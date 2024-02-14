@@ -433,7 +433,7 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 				}
 				// Commit and re-open to start with a clean state.
 				mptRoot, _ := statedb.Commit(0, false)
-				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
+				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, CacheSize: 10}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
 				if err != nil {
 					panic(err)
 				}
