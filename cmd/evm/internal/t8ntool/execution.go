@@ -371,7 +371,7 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 	// Did we pass the verkle fork?
 	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
 		// is this the verkle fork block?
-		if pre.Env.Number == 0 || chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)-1), pre.Env.ParentTimestamp) {
+		if pre.Env.Number == 0 || !chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)-1), pre.Env.ParentTimestamp) {
 			// generate the snapshot from the pre state and start with a fresh tree
 			if pre.MPTPre == nil {
 				panic("MPTPre is required for verkle transition")
@@ -391,7 +391,8 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, Verkle: verkle}, mptSdb.DiskDB(), mptSdb.TrieDB(), mptRoot)
 			if err != nil {
 				panic(err)
-			} else if snaps == nil {
+			}
+			if snaps == nil {
 				panic("snapshot is nil")
 			}
 			snaps.Cap(mptRoot, 0)
@@ -411,6 +412,7 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 
 				// Fallthrough to the MPT/post-conversion case
 			} else {
+				sdb.InitTransitionStatus(*pre.Env.Started, *pre.Env.Ended)
 				sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
 				sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
 				sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
@@ -431,10 +433,11 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 				}
 				// Commit and re-open to start with a clean state.
 				mptRoot, _ := statedb.Commit(0, false)
-				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, Verkle: verkle}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
+				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
 				if err != nil {
 					panic(err)
-				} else if snaps == nil {
+				}
+				if snaps == nil {
 					panic("snapshot is nil")
 				}
 				snaps.Cap(mptRoot, 0)
