@@ -65,11 +65,11 @@ type ExecutionResult struct {
 	CurrentBlobGasUsed   *math.HexOrDecimal64  `json:"currentBlobGasUsed,omitempty"`
 
 	// Values to test the verkle conversion
-	CurrentAccountAddress *common.Address `json:"currentConversionAddress" gencodec:"optional"`
-	CurrentSlotHash       common.Hash     `json:"currentConversionSlotHash" gencodec:"optional"`
-	Started               bool            `json:"currentConversionStarted" gencodec:"optional"`
-	Ended                 bool            `json:"currentConversionEnded" gencodec:"optional"`
-	StorageProcessed      bool            `json:"currentConversionStorageProcessed" gencodec:"optional"`
+	CurrentAccountAddress *common.Address `json:"currentConversionAddress,omitempty" gencodec:"optional"`
+	CurrentSlotHash       *common.Hash    `json:"currentConversionSlotHash,omitempty" gencodec:"optional"`
+	Started               *bool           `json:"currentConversionStarted,omitempty" gencodec:"optional"`
+	Ended                 *bool           `json:"currentConversionEnded,omitempty" gencodec:"optional"`
+	StorageProcessed      *bool           `json:"currentConversionStorageProcessed,omitempty" gencodec:"optional"`
 }
 
 type ommer struct {
@@ -333,20 +333,16 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	}
 	sdb := statedb.Database()
 	execRs := &ExecutionResult{
-		StateRoot:             root,
-		TxRoot:                types.DeriveSha(includedTxs, trie.NewStackTrie(nil)),
-		ReceiptRoot:           types.DeriveSha(receipts, trie.NewStackTrie(nil)),
-		Bloom:                 types.CreateBloom(receipts),
-		LogsHash:              rlpHash(statedb.Logs()),
-		Receipts:              receipts,
-		Rejected:              rejectedTxs,
-		Difficulty:            (*math.HexOrDecimal256)(vmContext.Difficulty),
-		GasUsed:               (math.HexOrDecimal64)(gasUsed),
-		BaseFee:               (*math.HexOrDecimal256)(vmContext.BaseFee),
-		CurrentAccountAddress: sdb.GetCurrentAccountAddress(),
-		CurrentSlotHash:       sdb.GetCurrentSlotHash(),
-		Started:               sdb.InTransition() && sdb.Transitioned(),
-		Ended:                 sdb.Transitioned(),
+		StateRoot:   root,
+		TxRoot:      types.DeriveSha(includedTxs, trie.NewStackTrie(nil)),
+		ReceiptRoot: types.DeriveSha(receipts, trie.NewStackTrie(nil)),
+		Bloom:       types.CreateBloom(receipts),
+		LogsHash:    rlpHash(statedb.Logs()),
+		Receipts:    receipts,
+		Rejected:    rejectedTxs,
+		Difficulty:  (*math.HexOrDecimal256)(vmContext.Difficulty),
+		GasUsed:     (math.HexOrDecimal64)(gasUsed),
+		BaseFee:     (*math.HexOrDecimal256)(vmContext.BaseFee),
 	}
 	if pre.Env.Withdrawals != nil {
 		h := types.DeriveSha(types.Withdrawals(pre.Env.Withdrawals), trie.NewStackTrie(nil))
@@ -355,6 +351,19 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 	if vmContext.ExcessBlobGas != nil {
 		execRs.CurrentExcessBlobGas = (*math.HexOrDecimal64)(vmContext.ExcessBlobGas)
 		execRs.CurrentBlobGasUsed = (*math.HexOrDecimal64)(&blobGasUsed)
+	}
+	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
+		ended := sdb.Transitioned()
+		if !ended {
+			var (
+				currentSlotHash = sdb.GetCurrentSlotHash()
+				started         = sdb.InTransition() && sdb.Transitioned() // This can't be true
+			)
+			execRs.CurrentAccountAddress = sdb.GetCurrentAccountAddress()
+			execRs.CurrentSlotHash = &currentSlotHash
+			execRs.Started = &started
+		}
+		execRs.Ended = &ended
 	}
 	// Re-create statedb instance with new root upon the updated database
 	// for accessing latest states.
@@ -370,15 +379,23 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 
 	// Did we pass the verkle fork?
 	if chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)), pre.Env.Timestamp) {
-		// is this the verkle fork block?
-		if pre.Env.Number == 0 || !chainConfig.IsPrague(big.NewInt(int64(pre.Env.Number)-1), pre.Env.ParentTimestamp) {
+		if pre.Env.Ended == nil {
+			panic("Conversion flag `ended` is nil")
+		}
+		// has the conversion ended?
+		if *pre.Env.Ended {
+			sdb.InitTransitionStatus(true, true)
+
+			// Fallthrough to the MPT/post-conversion case
+		} else if pre.MPTPre == nil {
+			// This is the first block of the conversion.
+
 			// generate the snapshot from the pre state and start with a fresh tree
-			if pre.MPTPre == nil {
-				panic("MPTPre is required for verkle transition")
-			}
 			mptSdb := state.NewDatabaseWithConfig(db, &trie.Config{Preimages: true, Verkle: false})
 			statedb, _ := state.New(types.EmptyRootHash, mptSdb, nil)
-			for addr, a := range *pre.MPTPre {
+
+			// MPT pre is the same as the pre state for first conversion block
+			for addr, a := range pre.Pre {
 				statedb.SetCode(addr, a.Code)
 				statedb.SetNonce(addr, a.Nonce)
 				statedb.SetBalance(addr, a.Balance)
@@ -387,8 +404,11 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 				}
 			}
 			// Commit db an create a snapshot from it.
-			mptRoot, _ := statedb.Commit(0, false)
-			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, Verkle: verkle}, mptSdb.DiskDB(), mptSdb.TrieDB(), mptRoot)
+			mptRoot, err := statedb.Commit(0, false)
+			if err != nil {
+				panic(err)
+			}
+			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, CacheSize: 10}, mptSdb.DiskDB(), mptSdb.TrieDB(), mptRoot)
 			if err != nil {
 				panic(err)
 			}
@@ -399,53 +419,46 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 
 			// The parent root is the root of the MPT, and it is also the one of the base tree. This
 			// is why it's repeated three times here.
-			sdb.StartVerkleTransition(mptRoot, mptRoot, chainConfig, chainConfig.PragueTime, mptRoot)
+			mptSdb.StartVerkleTransition(mptRoot, mptRoot, chainConfig, chainConfig.PragueTime, mptRoot)
 
 			// Create an empty verkle state
-			statedb, _ = state.New(types.EmptyRootHash, sdb, nil)
+			statedb, err = state.New(types.EmptyRootHash, mptSdb, snaps)
+			if err != nil {
+				panic(err)
+			}
 
 			return statedb
 		} else {
-			// has the conversion ended?
-			if *pre.Env.Ended {
-				sdb.InitTransitionStatus(true, true)
+			sdb.InitTransitionStatus(*pre.Env.Started, *pre.Env.Ended)
+			sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
+			sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
+			sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
 
-				// Fallthrough to the MPT/post-conversion case
-			} else {
-				sdb.InitTransitionStatus(*pre.Env.Started, *pre.Env.Ended)
-				sdb.SetCurrentAccountAddress(*pre.Env.CurrentAccountAddress)
-				sdb.SetCurrentSlotHash(*pre.Env.CurrentSlotHash)
-				sdb.SetStorageProcessed(*pre.Env.StorageProcessed)
-
-				// ongoing conversion, generate the snapshot from the pre state but also
-				// the intermediate verkle tree.
-				if pre.MPTPre == nil {
-					panic("MPTPre is required for verkle transition")
+			// ongoing conversion, generate the snapshot from the pre state but also
+			// the intermediate verkle tree.
+			statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
+			for addr, a := range *pre.MPTPre {
+				statedb.SetCode(addr, a.Code)
+				statedb.SetNonce(addr, a.Nonce)
+				statedb.SetBalance(addr, a.Balance)
+				for k, v := range a.Storage {
+					statedb.SetState(addr, k, v)
 				}
-				statedb, _ := state.New(types.EmptyRootHash, sdb, nil)
-				for addr, a := range *pre.MPTPre {
-					statedb.SetCode(addr, a.Code)
-					statedb.SetNonce(addr, a.Nonce)
-					statedb.SetBalance(addr, a.Balance)
-					for k, v := range a.Storage {
-						statedb.SetState(addr, k, v)
-					}
-				}
-				// Commit and re-open to start with a clean state.
-				mptRoot, _ := statedb.Commit(0, false)
-				snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, CacheSize: 10}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
-				if err != nil {
-					panic(err)
-				}
-				if snaps == nil {
-					panic("snapshot is nil")
-				}
-				snaps.Cap(mptRoot, 0)
-
-				// Fallthrough to the MPT/post-conversion case
-				// Note to self: the next state.New should not need snaps as a
-				// parameter, as long as it's available in the diskdb.
 			}
+			// Commit and re-open to start with a clean state.
+			mptRoot, _ := statedb.Commit(0, false)
+			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, CacheSize: 10}, sdb.DiskDB(), sdb.TrieDB(), mptRoot)
+			if err != nil {
+				panic(err)
+			}
+			if snaps == nil {
+				panic("snapshot is nil")
+			}
+			snaps.Cap(mptRoot, 0)
+
+			// Fallthrough to the MPT/post-conversion case
+			// Note to self: the next state.New should not need snaps as a
+			// parameter, as long as it's available in the diskdb.
 		}
 	}
 
