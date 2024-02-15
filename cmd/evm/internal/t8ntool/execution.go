@@ -408,6 +408,8 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 			if err != nil {
 				panic(err)
 			}
+			rawdb.WritePreimages(mptSdb.DiskDB(), statedb.Preimages())
+			mptSdb.TrieDB().WritePreimages()
 			snaps, err := snapshot.New(snapshot.Config{AsyncBuild: false, CacheSize: 10}, mptSdb.DiskDB(), mptSdb.TrieDB(), mptRoot)
 			if err != nil {
 				panic(err)
