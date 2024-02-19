@@ -77,11 +77,11 @@ var (
 )
 
 type input struct {
-	Alloc    core.GenesisAlloc  `json:"alloc,omitempty"`
-	AllocMPT *core.GenesisAlloc `json:"allocMPT,omitempty"`
-	Env      *stEnv             `json:"env,omitempty"`
-	Txs      []*txWithKey       `json:"txs,omitempty"`
-	TxRlp    string             `json:"txsRlp,omitempty"`
+	Alloc core.GenesisAlloc      `json:"alloc,omitempty"`
+	VKT   map[common.Hash][]byte `json:"vkt,omitempty"`
+	Env   *stEnv                 `json:"env,omitempty"`
+	Txs   []*txWithKey           `json:"txs,omitempty"`
+	TxRlp string                 `json:"txsRlp,omitempty"`
 }
 
 func Transition(ctx *cli.Context) error {
@@ -170,11 +170,11 @@ func Transition(ctx *cli.Context) error {
 	}
 	prestate.Pre = inputData.Alloc
 	if allocMPTStr != stdinSelector && allocMPTStr != "" {
-		if err := readFile(allocMPTStr, "allocMPT", &inputData.AllocMPT); err != nil {
+		if err := readFile(allocMPTStr, "VKT", &inputData.VKT); err != nil {
 			return err
 		}
 	}
-	prestate.MPTPre = inputData.AllocMPT
+	prestate.VKT = inputData.VKT
 
 	// Set the block environment
 	if envStr != stdinSelector {
@@ -308,7 +308,14 @@ func Transition(ctx *cli.Context) error {
 	body, _ := rlp.EncodeToBytes(txs)
 	// Dump the excution result
 	collector := make(Alloc)
-	s.DumpToCollector(collector, nil)
+	vktleaves := make(map[common.Hash][]byte)
+	if !chainConfig.IsPrague(big.NewInt(int64(prestate.Env.Number)), prestate.Env.Timestamp) {
+		// Only dump accounts in MPT mode, verkle does not have the
+		// concept of an alloc.
+		s.DumpToCollector(collector, nil)
+	} else {
+		s.DumpVKTLeaves(vktleaves)
+	}
 	return dispatchOutput(ctx, baseDir, result, collector, body)
 }
 
