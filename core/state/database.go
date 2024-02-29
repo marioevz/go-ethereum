@@ -19,6 +19,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -218,7 +219,7 @@ func (db *cachingDB) Transitioned() bool {
 
 // Fork implements the fork
 func (db *cachingDB) StartVerkleTransition(originalRoot, translatedRoot common.Hash, chainConfig *params.ChainConfig, pragueTime *uint64, root common.Hash) {
-	fmt.Println(`
+	fmt.Fprintf(os.Stderr, `
 	__________.__                       .__                .__                   __       .__                               .__          ____         
 	\__    ___|  |__   ____        ____ |  |   ____ ______ |  |__ _____    _____/  |_     |  |__ _____    ______    __  _  _|__| ____   / ___\ ______
 	  |    |  |  |  \_/ __ \     _/ __ \|  | _/ __ \\____ \|  |  \\__  \  /    \   __\    |  |  \\__  \  /  ___/    \ \/ \/ |  |/    \ / /_/  /  ___/
@@ -255,7 +256,7 @@ func (db *cachingDB) EndVerkleTransition() {
 		db.CurrentTransitionState.started = true
 	}
 
-	fmt.Println(`
+	fmt.Fprintf(os.Stderr, `
 	__________.__                       .__                .__                   __       .__                       .__                    .___         .___
 	\__    ___|  |__   ____        ____ |  |   ____ ______ |  |__ _____    _____/  |_     |  |__ _____    ______    |  | _____    ____   __| _/____   __| _/
 	  |    |  |  |  \_/ __ \     _/ __ \|  | _/ __ \\____ \|  |  \\__  \  /    \   __\    |  |  \\__  \  /  ___/    |  | \__  \  /    \ / __ _/ __ \ / __ |
