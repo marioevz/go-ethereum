@@ -407,7 +407,7 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 		}
 		snaps.Cap(mptRoot, 0)
 
-		sdb := state.NewDatabaseWithConfig(db, &trie.Config{Verkle: true})
+		sdb := mptSdb // := state.NewDatabaseWithConfig(db, &trie.Config{Verkle: true})
 
 		// Load the conversion status
 		sdb.InitTransitionStatus(pre.Env.Started != nil && *pre.Env.Started, pre.Env.Ended != nil && *pre.Env.Ended)
@@ -451,7 +451,7 @@ func MakePreState(db ethdb.Database, chainConfig *params.ChainConfig, pre *Prest
 		}
 
 		root, _ := statedb.Commit(0, false)
-		statedb, err = state.New(root, sdb, nil)
+		statedb, err = state.New(root, sdb, snaps)
 		if err != nil {
 			panic(err)
 		}
