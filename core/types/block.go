@@ -93,6 +93,9 @@ type Header struct {
 
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
+
+	// DepositsHash was added by EIP-6110 and is ignored in legacy headers.
+	DepositsHash *common.Hash `json:"depositsRoot" rlp:"optional"`
 }
 
 // field type overrides for gencodec
@@ -171,6 +174,7 @@ type Body struct {
 	Transactions []*Transaction
 	Uncles       []*Header
 	Withdrawals  []*Withdrawal `rlp:"optional"`
+	Deposits     []*Deposit    `rlp:"optional"`
 }
 
 // Block represents an Ethereum block.
@@ -195,6 +199,7 @@ type Block struct {
 	uncles       []*Header
 	transactions Transactions
 	withdrawals  Withdrawals
+	deposits     Deposits
 
 	// caches
 	hash atomic.Pointer[common.Hash]
@@ -212,6 +217,7 @@ type extblock struct {
 	Txs         []*Transaction
 	Uncles      []*Header
 	Withdrawals []*Withdrawal `rlp:"optional"`
+	Deposits    []*Deposit    `rlp:"optional"`
 }
 
 // NewBlock creates a new block. The input data is copied, changes to header and to the
@@ -272,6 +278,30 @@ func NewBlockWithWithdrawals(header *Header, txs []*Transaction, uncles []*Heade
 	return b.WithWithdrawals(withdrawals)
 }
 
+// NewBlockWithWithdrawals creates a new block with withdrawals. The input data is copied,
+// changes to header and to the field values will not affect the block.
+//
+// The values of TxHash, UncleHash, ReceiptHash and Bloom in header are ignored and set to
+// values derived from the given txs, uncles and receipts.
+func NewBlockWithDeposits(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal, deposits []*Deposit, hasher TrieHasher) *Block {
+	b := NewBlockWithWithdrawals(header, txs, uncles, receipts, withdrawals, hasher)
+
+	if deposits == nil {
+		b.header.DepositsHash = nil
+	} else if len(deposits) == 0 {
+		b.header.DepositsHash = &EmptyWithdrawalsHash
+	} else {
+		h := DeriveSha(Deposits(deposits), hasher)
+		b.header.DepositsHash = &h
+	}
+
+	b = b.WithWithdrawals(withdrawals)
+
+	// TODO(matt): copy this
+	b.deposits = deposits
+	return b
+}
+
 // CopyHeader creates a deep copy of a block header.
 func CopyHeader(h *Header) *Header {
 	cpy := *h
@@ -304,6 +334,10 @@ func CopyHeader(h *Header) *Header {
 		cpy.ParentBeaconRoot = new(common.Hash)
 		*cpy.ParentBeaconRoot = *h.ParentBeaconRoot
 	}
+	if h.DepositsHash != nil {
+		cpy.DepositsHash = new(common.Hash)
+		*cpy.DepositsHash = *h.DepositsHash
+	}
 	return &cpy
 }
 
@@ -332,7 +366,7 @@ func (b *Block) EncodeRLP(w io.Writer) error {
 // Body returns the non-header content of the block.
 // Note the returned data is not an independent copy.
 func (b *Block) Body() *Body {
-	return &Body{b.transactions, b.uncles, b.withdrawals}
+	return &Body{b.transactions, b.uncles, b.withdrawals, b.deposits}
 }
 
 // Accessors for body data. These do not return a copy because the content
@@ -341,6 +375,7 @@ func (b *Block) Body() *Body {
 func (b *Block) Uncles() []*Header          { return b.uncles }
 func (b *Block) Transactions() Transactions { return b.transactions }
 func (b *Block) Withdrawals() Withdrawals   { return b.withdrawals }
+func (b *Block) Deposits() Deposits         { return b.deposits }
 
 func (b *Block) Transaction(hash common.Hash) *Transaction {
 	for _, transaction := range b.transactions {
@@ -465,6 +500,23 @@ func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
 	for i := range uncles {
 		block.uncles[i] = CopyHeader(uncles[i])
 	}
+	return block
+}
+
+func (b *Block) WithBody2(body *Body) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: make([]*Transaction, len(body.Transactions)),
+		uncles:       make([]*Header, len(body.Uncles)),
+		withdrawals:  make([]*Withdrawal, len(body.Withdrawals)),
+		deposits:     make([]*Deposit, len(body.Deposits)),
+	}
+	copy(block.transactions, body.Transactions)
+	for i := range body.Uncles {
+		block.uncles[i] = CopyHeader(body.Uncles[i])
+	}
+	copy(block.withdrawals, body.Withdrawals)
+	copy(block.deposits, body.Deposits)
 	return block
 }
 
