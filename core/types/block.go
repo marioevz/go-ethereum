@@ -23,6 +23,7 @@ import (
 	"io"
 	"math/big"
 	"reflect"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -94,8 +95,8 @@ type Header struct {
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
 
-	// DepositsHash was added by EIP-6110 and is ignored in legacy headers.
-	DepositsHash *common.Hash `json:"depositsRoot" rlp:"optional"`
+	// RequestsHash was added by EIP-7685 and is ignored in legacy headers.
+	RequestsHash *common.Hash `json:"requestsRoot" rlp:"optional"`
 }
 
 // field type overrides for gencodec
@@ -174,7 +175,7 @@ type Body struct {
 	Transactions []*Transaction
 	Uncles       []*Header
 	Withdrawals  []*Withdrawal `rlp:"optional"`
-	Deposits     []*Deposit    `rlp:"optional"`
+	Requests     []*Request    `rlp:"optional"`
 }
 
 // Block represents an Ethereum block.
@@ -199,7 +200,7 @@ type Block struct {
 	uncles       []*Header
 	transactions Transactions
 	withdrawals  Withdrawals
-	deposits     Deposits
+	requests     Requests
 
 	// caches
 	hash atomic.Pointer[common.Hash]
@@ -217,7 +218,7 @@ type extblock struct {
 	Txs         []*Transaction
 	Uncles      []*Header
 	Withdrawals []*Withdrawal `rlp:"optional"`
-	Deposits    []*Deposit    `rlp:"optional"`
+	Requests    []*Request    `rlp:"optional"`
 }
 
 // NewBlock creates a new block. The input data is copied, changes to header and to the
@@ -278,27 +279,24 @@ func NewBlockWithWithdrawals(header *Header, txs []*Transaction, uncles []*Heade
 	return b.WithWithdrawals(withdrawals)
 }
 
-// NewBlockWithWithdrawals creates a new block with withdrawals. The input data is copied,
+// NewBlockWithRequests creates a new block with withdrawals. The input data is copied,
 // changes to header and to the field values will not affect the block.
 //
 // The values of TxHash, UncleHash, ReceiptHash and Bloom in header are ignored and set to
 // values derived from the given txs, uncles and receipts.
-func NewBlockWithDeposits(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal, deposits []*Deposit, hasher TrieHasher) *Block {
+func NewBlockWithRequests(header *Header, txs Transactions, uncles []*Header, receipts Receipts, withdrawals Withdrawals, requests Requests, hasher TrieHasher) *Block {
 	b := NewBlockWithWithdrawals(header, txs, uncles, receipts, withdrawals, hasher)
 
-	if deposits == nil {
-		b.header.DepositsHash = nil
-	} else if len(deposits) == 0 {
-		b.header.DepositsHash = &EmptyWithdrawalsHash
+	if requests == nil {
+		b.header.RequestsHash = nil
+	} else if len(requests) == 0 {
+		b.header.RequestsHash = &EmptyWithdrawalsHash
 	} else {
-		h := DeriveSha(Deposits(deposits), hasher)
-		b.header.DepositsHash = &h
+		h := DeriveSha(requests, hasher)
+		b.header.RequestsHash = &h
 	}
-
 	b = b.WithWithdrawals(withdrawals)
-
-	// TODO(matt): copy this
-	b.deposits = deposits
+	b.requests = slices.Clone(requests)
 	return b
 }
 
@@ -334,9 +332,9 @@ func CopyHeader(h *Header) *Header {
 		cpy.ParentBeaconRoot = new(common.Hash)
 		*cpy.ParentBeaconRoot = *h.ParentBeaconRoot
 	}
-	if h.DepositsHash != nil {
-		cpy.DepositsHash = new(common.Hash)
-		*cpy.DepositsHash = *h.DepositsHash
+	if h.RequestsHash != nil {
+		cpy.RequestsHash = new(common.Hash)
+		*cpy.RequestsHash = *h.RequestsHash
 	}
 	return &cpy
 }
@@ -366,7 +364,7 @@ func (b *Block) EncodeRLP(w io.Writer) error {
 // Body returns the non-header content of the block.
 // Note the returned data is not an independent copy.
 func (b *Block) Body() *Body {
-	return &Body{b.transactions, b.uncles, b.withdrawals, b.deposits}
+	return &Body{b.transactions, b.uncles, b.withdrawals, b.requests}
 }
 
 // Accessors for body data. These do not return a copy because the content
@@ -375,7 +373,17 @@ func (b *Block) Body() *Body {
 func (b *Block) Uncles() []*Header          { return b.uncles }
 func (b *Block) Transactions() Transactions { return b.transactions }
 func (b *Block) Withdrawals() Withdrawals   { return b.withdrawals }
-func (b *Block) Deposits() Deposits         { return b.deposits }
+func (b *Block) Requests() Requests         { return b.requests }
+
+func (b *Block) Deposits() Deposits {
+	var deps Deposits
+	for _, r := range b.requests {
+		if d, ok := r.inner.(*Deposit); ok {
+			deps = append(deps, d)
+		}
+	}
+	return deps
+}
 
 func (b *Block) Transaction(hash common.Hash) *Transaction {
 	for _, transaction := range b.transactions {
@@ -506,17 +514,18 @@ func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
 func (b *Block) WithBody2(body *Body) *Block {
 	block := &Block{
 		header:       b.header,
-		transactions: make([]*Transaction, len(body.Transactions)),
+		transactions: slices.Clone(body.Transactions),
 		uncles:       make([]*Header, len(body.Uncles)),
-		withdrawals:  make([]*Withdrawal, len(body.Withdrawals)),
-		deposits:     make([]*Deposit, len(body.Deposits)),
 	}
-	copy(block.transactions, body.Transactions)
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
 	}
-	copy(block.withdrawals, body.Withdrawals)
-	copy(block.deposits, body.Deposits)
+	if body.Withdrawals != nil {
+		block.withdrawals = slices.Clone(body.Withdrawals)
+	}
+	if body.Requests != nil {
+		block.requests = slices.Clone(body.Requests)
+	}
 	return block
 }
 
@@ -530,6 +539,21 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	if withdrawals != nil {
 		block.withdrawals = make([]*Withdrawal, len(withdrawals))
 		copy(block.withdrawals, withdrawals)
+	}
+	return block
+}
+
+// WithRequests returns a copy of the block containing the given requests.
+func (b *Block) WithRequests(requests []*Request) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+	}
+	if requests != nil {
+		block.requests = make([]*Request, len(requests))
+		copy(block.requests, requests)
 	}
 	return block
 }
