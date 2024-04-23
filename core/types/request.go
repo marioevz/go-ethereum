@@ -64,6 +64,17 @@ func (s Requests) EncodeIndex(i int, w *bytes.Buffer) {
 	rlp.Encode(w, s[i])
 }
 
+// Retrieve deposits from a requests list.
+func (s Requests) Deposits() Deposits {
+	deposits := make(Deposits, 0, len(s))
+	for _, req := range s {
+		if req.Type() == DepositRequestType {
+			deposits = append(deposits, req.inner.(*Deposit))
+		}
+	}
+	return deposits
+}
+
 type RequestData interface {
 	requestType() byte
 	encode(*bytes.Buffer) error
