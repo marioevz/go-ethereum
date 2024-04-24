@@ -61,7 +61,18 @@ func (s Requests) Len() int { return len(s) }
 
 // EncodeIndex encodes the i'th request to s.
 func (s Requests) EncodeIndex(i int, w *bytes.Buffer) {
-	rlp.Encode(w, s[i])
+	s[i].encode(w)
+}
+
+// Retrieve deposits from a requests list.
+func (s Requests) Deposits() Deposits {
+	deposits := make(Deposits, 0, len(s))
+	for _, req := range s {
+		if req.Type() == DepositRequestType {
+			deposits = append(deposits, req.inner.(*Deposit))
+		}
+	}
+	return deposits
 }
 
 type RequestData interface {
