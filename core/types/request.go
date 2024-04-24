@@ -61,7 +61,7 @@ func (s Requests) Len() int { return len(s) }
 
 // EncodeIndex encodes the i'th request to s.
 func (s Requests) EncodeIndex(i int, w *bytes.Buffer) {
-	rlp.Encode(w, s[i])
+	s[i].encode(w)
 }
 
 // Retrieve deposits from a requests list.
