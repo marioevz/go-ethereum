@@ -67,7 +67,7 @@ type ExecutionResult struct {
 	CurrentExcessBlobGas *math.HexOrDecimal64  `json:"currentExcessBlobGas,omitempty"`
 	CurrentBlobGasUsed   *math.HexOrDecimal64  `json:"blobGasUsed,omitempty"`
 	RequestsRoot         *common.Hash          `json:"requestsRoot,omitempty"`
-	Deposits             *types.Deposits       `json:"deposits,omitempty"`
+	DepositRequests      *types.Deposits       `json:"depositRequests,omitempty"`
 }
 
 type ommer struct {
@@ -385,7 +385,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		execRs.RequestsRoot = &h
 		// Get the deposits from the requests
 		deposits := requests.Deposits()
-		execRs.Deposits = &deposits
+		execRs.DepositRequests = &deposits
 	}
 	// Re-create statedb instance with new root upon the updated database
 	// for accessing latest states.
