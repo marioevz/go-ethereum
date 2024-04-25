@@ -67,13 +67,24 @@ func (s Requests) EncodeIndex(i int, w *bytes.Buffer) {
 
 // Retrieve deposits from a requests list.
 func (s Requests) Deposits() Deposits {
-	deposits := make(Deposits, 0, len(s))
+	dr := make(Deposits, 0, len(s))
 	for _, req := range s {
 		if req.Type() == DepositRequestType {
-			deposits = append(deposits, req.inner.(*Deposit))
+			dr = append(dr, req.inner.(*Deposit))
 		}
 	}
-	return deposits
+	return dr
+}
+
+// Retrieve withdrawals requests from a requests list.
+func (s Requests) Withdrawals() WithdrawalRequests {
+	wr := make(WithdrawalRequests, 0, len(s))
+	for _, req := range s {
+		if req.Type() == WithdrawalRequestType {
+			wr = append(wr, req.inner.(*WithdrawalRequest))
+		}
+	}
+	return wr
 }
 
 type RequestData interface {

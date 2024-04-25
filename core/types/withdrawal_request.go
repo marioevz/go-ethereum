@@ -26,8 +26,8 @@ import (
 // WithdrawalRequest represents an EIP-7002 withdrawal request from source for
 // the validator associated with the public key for amount.
 type WithdrawalRequest struct {
-	Source    common.Address `json:"source"`
-	PublicKey BLSPublicKey   `json:"pubkey"`
+	Source    common.Address `json:"sourceAddress"`
+	PublicKey BLSPublicKey   `json:"validatorPublicKey"`
 	Amount    uint64         `json:"amount"`
 }
 
