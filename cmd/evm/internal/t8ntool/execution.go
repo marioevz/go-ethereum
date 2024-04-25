@@ -346,7 +346,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 		amount := new(big.Int).Mul(new(big.Int).SetUint64(w.Amount), big.NewInt(params.GWei))
 		statedb.AddBalance(w.Address, uint256.MustFromBig(amount), tracing.BalanceIncreaseWithdrawal)
 	}
-	// Apply withdrawal requests
+	// Retrieve deposit and withdrawal requests
 	var (
 		depositRequests    *types.Deposits
 		withdrawalRequests *types.WithdrawalRequests
