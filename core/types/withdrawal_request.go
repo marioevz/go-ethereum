@@ -20,8 +20,11 @@ import (
 	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+//go:generate go run github.com/fjl/gencodec -type WithdrawalRequest -field-override withdrawalRequestMarshaling -out gen_withdrawal_request_json.go
 
 // WithdrawalRequest represents an EIP-7002 withdrawal request from source for
 // the validator associated with the public key for amount.
@@ -29,6 +32,11 @@ type WithdrawalRequest struct {
 	Source    common.Address `json:"sourceAddress"`
 	PublicKey BLSPublicKey   `json:"validatorPublicKey"`
 	Amount    uint64         `json:"amount"`
+}
+
+// field type overrides for gencodec
+type withdrawalRequestMarshaling struct {
+	Amount hexutil.Uint64
 }
 
 func (w *WithdrawalRequest) Bytes() []byte {
