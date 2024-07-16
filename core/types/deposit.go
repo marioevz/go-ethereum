@@ -19,6 +19,7 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,11 +31,11 @@ import (
 
 // Deposit contians EIP-6110 deposit data.
 type Deposit struct {
-	PublicKey             [48]byte     `json:"pubkey"`                // public key of validator
-	WithdrawalCredentials common.Hash  `json:"withdrawalCredentials"` // beneficiary of the validator funds
-	Amount                uint64       `json:"amount"`                // deposit size in Gwei
-	Signature             [96]byte     `json:"signature"`             // signature over deposit msg
-	Index                 uint64       `json:"index"`                 // deposit count value
+	PublicKey             [48]byte    `json:"pubkey"`                // public key of validator
+	WithdrawalCredentials common.Hash `json:"withdrawalCredentials"` // beneficiary of the validator funds
+	Amount                uint64      `json:"amount"`                // deposit size in Gwei
+	Signature             [96]byte    `json:"signature"`             // signature over deposit msg
+	Index                 uint64      `json:"index"`                 // deposit count value
 }
 
 // field type overrides for gencodec
@@ -90,16 +91,32 @@ var (
 
 // UnpackIntoDeposit unpacks a serialized DepositEvent.
 func UnpackIntoDeposit(data []byte) (*Deposit, error) {
-	var du depositUnpacking
-	if err := DepositABI.UnpackIntoInterface(&du, "DepositEvent", data); err != nil {
-		return nil, err
+	if len(data) != 576 {
+		return nil, fmt.Errorf("deposit wrong length: want 576, have %d", len(data))
 	}
 	var d Deposit
-	copy(d.PublicKey[:], du.Pubkey)
-	copy(d.WithdrawalCredentials[:], du.WithdrawalCredentials)
-	d.Amount = binary.LittleEndian.Uint64(du.Amount)
-	copy(d.Signature[:], du.Signature)
-	d.Index = binary.LittleEndian.Uint64(du.Index)
+	// The ABI encodes the position of dynamic elements first. Since there are 5
+	// elements, skip over the positional data. The first 32 bytes of dynamic
+	// elements also encode their actual length. Skip over that value too.
+	b := 32*5 + 32
+	// PublicKey is the first element. ABI encoding pads values to 32 bytes, so
+	// despite BLS public keys being length 48, the value length here is 64. Then
+	// skip over the next length value.
+	copy(d.PublicKey[:], data[b:b+48])
+	b += 48 + 16 + 32
+	// WithdrawalCredentials is 32 bytes. Read that value then skip over next
+	// length.
+	copy(d.WithdrawalCredentials[:], data[b:b+32])
+	b += 32 + 32
+	// Amount is 8 bytes, but it is padded to 32. Skip over it and the next
+	// length.
+	d.Amount = binary.LittleEndian.Uint64(data[b : b+8])
+	b += 8 + 24 + 32
+	// Signature is 96 bytes. Skip over it and the next length.
+	copy(d.Signature[:], data[b:b+96])
+	b += 96 + 32
+	// Amount is 8 bytes.
+	d.Index = binary.LittleEndian.Uint64(data[b : b+8])
 
 	return &d, nil
 }
