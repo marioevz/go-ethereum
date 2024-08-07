@@ -112,4 +112,7 @@ var (
 
 	// ErrBlobTxCreate is returned if a blob transaction has no explicit to field.
 	ErrBlobTxCreate = errors.New("blob transaction of type create")
+
+	// ErrAuthListCreate is returned if a set code transaction has no explicit to field.
+	ErrAuthListCreate = errors.New("set code transaction of type create")
 )

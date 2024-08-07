@@ -301,6 +301,7 @@ func (pre *Prestate) Apply(vmConfig vm.Config, chainConfig *params.ChainConfig,
 			//receipt.BlockHash
 			//receipt.BlockNumber
 			receipt.TransactionIndex = uint(txIndex)
+			receipt.Delegations = msgResult.Delegations
 			receipts = append(receipts, receipt)
 			if tracer != nil {
 				if tracer.Hooks.OnTxEnd != nil {

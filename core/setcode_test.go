@@ -81,13 +81,13 @@ func TestEIP7702(t *testing.T) {
 		auth1, _ := types.SignAuth(&types.Authorization{
 			ChainID: new(big.Int).Set(gspec.Config.ChainID),
 			Address: aa,
-			Nonce:   nil,
+			Nonce:   0,
 		}, key1)
 
 		auth2, _ := types.SignAuth(&types.Authorization{
 			ChainID: new(big.Int).Set(gspec.Config.ChainID),
 			Address: bb,
-			Nonce:   []uint64{0},
+			Nonce:   0,
 		}, key2)
 
 		txdata := &types.SetCodeTx{

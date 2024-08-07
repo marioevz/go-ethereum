@@ -36,6 +36,7 @@ import (
 type ExecutionResult struct {
 	UsedGas     uint64 // Total used gas, not including the refunded gas
 	RefundedGas uint64 // Total gas refunded after execution
+	Delegations []types.SetCodeDelegation
 	Err         error  // Any error encountered during the execution(listed in core/vm/errors.go)
 	ReturnData  []byte // Returned data from evm(function result or data supplied with revert opcode)
 }
@@ -115,7 +116,7 @@ func IntrinsicGas(data []byte, accessList types.AccessList, authList types.Autho
 		gas += uint64(accessList.StorageKeys()) * params.TxAccessListStorageKeyGas
 	}
 	if authList != nil {
-		gas += uint64(len(authList)) * params.TxAuthTupleGas
+		gas += uint64(len(authList)) * params.TxAuthTupleEmptyAccountGas
 	}
 	return gas, nil
 }
@@ -434,49 +435,53 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		return nil, fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, len(msg.Data), params.MaxInitCodeSize)
 	}
 
-	// Check authorizations list validity.
-	var delegations []types.SetCodeDelegation
-	if msg.AuthList != nil {
-		seen := make(map[common.Address]bool)
-		for _, auth := range msg.AuthList {
-			authority, err := auth.Authority()
-			if err != nil {
-				continue
-			}
-			var nonce *uint64
-			if len(auth.Nonce) > 1 {
-				return nil, fmt.Errorf("authorization must be either empty list or contain exactly one element")
-			}
-			if len(auth.Nonce) == 1 {
-				tmp := auth.Nonce[0]
-				nonce = &tmp
-			}
-			if nonce != nil {
-				if have := st.state.GetNonce(authority); have != *nonce {
-					continue
-				}
-			}
-			if _, ok := seen[authority]; !ok {
-				seen[authority] = true
-				delegations = append(delegations, types.SetCodeDelegation{From: authority, Nonce: nonce, Target: auth.Address})
-			}
-		}
-	}
-
-	// Execute the preparatory steps for state transition which includes:
-	// - prepare accessList(post-berlin)
-	// - reset transient storage(eip 1153)
-	st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList, delegations)
-
 	var (
-		ret   []byte
-		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
+		ret         []byte
+		vmerr       error // vm errors do not effect consensus and are therefore not assigned to err
+		delegations []types.SetCodeDelegation
 	)
 	if contractCreation {
+		if msg.AuthList != nil {
+			return nil, fmt.Errorf("%w: address %v", ErrAuthListCreate, msg.From.Hex())
+		}
+		// Execute the preparatory steps for state transition which includes:
+		// - prepare accessList(post-berlin)
+		// - reset transient storage(eip 1153)
+		st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList, delegations)
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From, st.state.GetNonce(sender.Address())+1)
+		// Check authorizations list validity.
+		if msg.AuthList != nil {
+			seen := make(map[common.Address]types.SetCodeDelegation)
+			for _, auth := range msg.AuthList {
+				authority, err := auth.Authority()
+				if err != nil {
+					continue
+				}
+				if auth.ChainID.Cmp(big.NewInt(0)) != 0 && auth.ChainID.Cmp(st.evm.ChainConfig().ChainID) != 0 {
+					continue
+				}
+				if len(st.state.GetCode(authority)) != 0 {
+					continue
+				}
+				haveNonce := st.state.GetNonce(authority)
+				if haveNonce != auth.Nonce {
+					continue
+				}
+				if !st.state.Empty(authority) {
+					st.gasRemaining += params.TxAuthTupleEmptyAccountGas - params.TxAuthTupleGas
+				}
+				st.state.SetNonce(authority, haveNonce+1)
+
+				seen[authority] = types.SetCodeDelegation{From: authority, Nonce: auth.Nonce, Target: auth.Address}
+			}
+			for _, auth := range seen {
+				delegations = append(delegations, auth)
+			}
+		}
+		st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList, delegations)
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 	}
 
@@ -512,6 +517,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	return &ExecutionResult{
 		UsedGas:     st.gasUsed(),
 		RefundedGas: gasRefund,
+		Delegations: delegations,
 		Err:         vmerr,
 		ReturnData:  ret,
 	}, nil
