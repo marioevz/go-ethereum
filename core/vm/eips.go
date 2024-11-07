@@ -754,6 +754,7 @@ func opPay(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 	interpreter.evm.StateDB.SubBalance(scope.Caller(), &value, tracing.BalanceChangeTransfer)
 	interpreter.evm.StateDB.AddBalance(toAddr, &value, tracing.BalanceChangeTransfer)
 	interpreter.evm.StateDB.AddAddressToAccessList(toAddr)
+	interpreter.returnData = []byte{}
 	return nil, nil
 }
 
