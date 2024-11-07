@@ -243,9 +243,12 @@ const (
 	DELEGATECALL OpCode = 0xf4
 	CREATE2      OpCode = 0xf5
 
-	RETURNDATALOAD  OpCode = 0xf7
-	EXTCALL         OpCode = 0xf8
-	EXTDELEGATECALL OpCode = 0xf9
+	RETURNDATALOAD OpCode = 0xf7
+	EXTCALL        OpCode = 0xf8
+	// EXTDELEGATECALL OpCode = 0xf9
+	EXTDELEGATECALL OpCode = 0xfc // modified for workshop
+
+	PAY OpCode = 0xf9
 
 	STATICCALL    OpCode = 0xfa
 	EXTSTATICCALL OpCode = 0xfb
@@ -445,6 +448,8 @@ var opCodeToString = [256]string{
 	EXTCALL:         "EXTCALL",
 	EXTDELEGATECALL: "EXTDELEGATECALL",
 
+	PAY: "PAY",
+
 	STATICCALL:    "STATICCALL",
 	EXTSTATICCALL: "EXTSTATICCALL",
 	REVERT:        "REVERT",
@@ -621,6 +626,7 @@ var stringToOp = map[string]OpCode{
 	"RETURNDATALOAD":  RETURNDATALOAD,
 	"EXTCALL":         EXTCALL,
 	"EXTDELEGATECALL": EXTDELEGATECALL,
+	"PAY":             PAY,
 	"EXTSTATICCALL":   EXTSTATICCALL,
 	"CALL":            CALL,
 	"RETURN":          RETURN,

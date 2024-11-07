@@ -728,3 +728,49 @@ func enable7702(jt *JumpTable) {
 	jt[DELEGATECALL].constantGas = params.WarmStorageReadCostEIP2929
 	jt[DELEGATECALL].dynamicGas = gasDelegateCallEIP7702
 }
+
+// enable5920 enables EIP-5920 (PAY opcode)
+// https://eips.ethereum.org/EIPS/eip-5920
+func enable5920(jt *JumpTable) {
+	jt[PAY] = &operation{
+		execute:    opPay,
+		dynamicGas: gasPay,
+		minStack:   minStack(2, 0),
+		maxStack:   maxStack(2, 0),
+	}
+}
+
+// opPay implements the PAY opcode (https://eips.ethereum.org/EIPS/eip-5920)
+func opPay(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	var (
+		addr  = scope.Stack.pop()
+		value = scope.Stack.pop()
+	)
+	toAddr := common.Address(addr.Bytes20())
+
+	if !value.IsZero() && !interpreter.evm.Context.CanTransfer(interpreter.evm.StateDB, scope.Caller(), &value) {
+		return nil, ErrInsufficientBalance
+	}
+	interpreter.evm.StateDB.SubBalance(scope.Caller(), &value, tracing.BalanceChangeTransfer)
+	interpreter.evm.StateDB.AddBalance(toAddr, &value, tracing.BalanceChangeTransfer)
+	interpreter.evm.StateDB.AddAddressToAccessList(toAddr)
+	return nil, nil
+}
+
+func gasPay(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
+	var (
+		gas   uint64
+		value = stack.Back(1)
+		addr  = common.Address(stack.Back(0).Bytes20())
+	)
+
+	if evm.StateDB.AddressInAccessList(addr) {
+		gas += params.WarmStorageReadCostEIP2929
+	} else {
+		gas += params.ColdAccountAccessCostEIP2929
+	}
+	if !value.IsZero() && evm.StateDB.Empty(addr) {
+		gas += params.CallNewAccountGas
+	}
+	return gas, nil
+}
