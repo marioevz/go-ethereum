@@ -239,7 +239,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV3(update engine.ForkchoiceStateV1, pa
 		if params.BeaconRoot == nil {
 			return engine.STATUS_INVALID, engine.InvalidPayloadAttributes.With(errors.New("missing beacon root"))
 		}
-		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague {
+		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Osaka {
 			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for cancun payloads"))
 		}
 	}
@@ -297,7 +297,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedWithWitnessV3(update engine.Forkchoice
 		if params.BeaconRoot == nil {
 			return engine.STATUS_INVALID, engine.InvalidPayloadAttributes.With(errors.New("missing beacon root"))
 		}
-		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague {
+		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Osaka {
 			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for cancun payloads"))
 		}
 	}
@@ -634,7 +634,7 @@ func (api *ConsensusAPI) NewPayloadV4(params engine.ExecutableData, versionedHas
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil executionRequests post-prague"))
 	}
 
-	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague {
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Osaka {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadV4 must only be called for prague payloads"))
 	}
 	requests := convertRequests(executionRequests)
@@ -723,7 +723,7 @@ func (api *ConsensusAPI) NewPayloadWithWitnessV4(params engine.ExecutableData, v
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil executionRequests post-prague"))
 	}
 
-	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague {
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Osaka {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadWithWitnessV4 must only be called for prague payloads"))
 	}
 	requests := convertRequests(executionRequests)
@@ -812,7 +812,7 @@ func (api *ConsensusAPI) ExecuteStatelessPayloadV4(params engine.ExecutableData,
 		return engine.StatelessPayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil executionRequests post-prague"))
 	}
 
-	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague {
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Prague && api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Osaka {
 		return engine.StatelessPayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("executeStatelessPayloadV4 must only be called for prague payloads"))
 	}
 	requests := convertRequests(executionRequests)
